@@ -1,0 +1,224 @@
+
+from typing import Optional, Union
+from fastapi import FastAPI, Depends, HTTPException, status
+from pydantic import BaseModel
+import models
+from database import engine, SessionLocal
+from sqlalchemy.orm import Session,load_only
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from responses import Response
+
+import uvicorn 
+
+app = FastAPI()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+models.Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    try:
+        db = SessionLocal()
+        yield db
+    except Exception as e:
+        print(e)
+    finally:
+        db.close()
+
+
+SECRET_KEY = "ComputerUser"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Union[str, None] = None
+
+
+class login(BaseModel):
+    username: str
+    password: str
+
+
+class meeting(BaseModel):
+    Conference_room_name : str
+    user: str
+    password : str
+    No_of_seats : int
+    Is_Projector_or_TV_availability : bool
+    Location : str
+    Active : bool
+
+class meetingput(BaseModel):
+    Conference_room_name :Optional[str] = None
+    user: Optional[str] = None
+    password :Optional[str] = None
+    No_of_seats :Optional[str] = None
+    Is_Projector_or_TV_availability : Optional[bool] = None
+    Location : Optional[str] = None
+    Active : Optional[bool] = None
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user: str = payload.get("sub")
+        if user is None:
+            raise credentials_exception
+        token_data = TokenData(username=user)
+    except JWTError:
+        raise credentials_exception
+    return user
+
+
+@app.post('/login', tags=["Authentication"])
+def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.meeting).filter(models.meeting.user == request.username).first()
+    hashedpassword = pwd_context.hash(request.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Invalid user")
+    if not verify_password(request.password, hashedpassword):
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Invalid password")
+
+    access_token = create_access_token(data={"sub": user.user})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/v1/Meeting")
+async def List_all_Meeting_room(db: Session = Depends(get_db), current_user: meeting = Depends(get_current_user)):
+    try:
+        data = db.query(models.meeting).options(load_only(models.meeting.user,
+                                    
+                                                         models.meeting. Conference_room_name,
+                                                         models.meeting.No_of_seats,
+                                                         models.meeting.Is_Projector_or_TV_availability,
+                                                         models.meeting.Location,
+                                                         models.meeting.Active)).all()
+        if data is not None:
+            return Response(data, 'Meeting_room retrieved successfully', False)
+        return Response('Meeting_room does not exist', 'Response Failed', True)
+
+    except Exception as e:
+        print(e)
+
+
+@app.post("/v1/Meeting")
+async def Create_Meeting_Room(meeting: meeting, db: Session = Depends(get_db),
+                                                current_user: meeting = Depends(get_current_user)):
+    try:
+        hashedpassword = pwd_context.hash(meeting.password)
+
+        meeting_model = models. meeting()
+        meeting_model.Conference_room_name = meeting.Conference_room_name
+        meeting_model.user = meeting.user
+        meeting_model.password = hashedpassword
+        meeting_model.No_of_seats = meeting.No_of_seats
+        meeting_model.Is_Projector_or_TV_availability = meeting.Is_Projector_or_TV_availability
+        meeting_model. Location = meeting. Location
+        meeting_model.Active = meeting.Active
+        db.add(meeting_model)
+        db.commit() 
+    except Exception as e:
+        print(e)
+    data = [{'user': meeting.user,
+             'Conference_room_name': meeting.Conference_room_name,
+             'No_of_seats': meeting.No_of_seats,
+             'Is_Projector_or_TV_availability': meeting.Is_Projector_or_TV_availability,
+             'Location': meeting.Location,
+             'Active': meeting.Active}]
+
+
+    return Response(data, 'meeting_room added successfully', False)
+
+@app.put('/V1/Meeting')
+async def Upadate_Meeting_Room(id: int,meetingput: meetingput, db: Session = Depends(get_db),
+                              current_user: meetingput = Depends(get_current_user)):
+    try:  
+        if meeting_model is None:
+          return Response(data, 'Meeting_room retrieved successfully', False)
+    except Exception as e:
+      print(e)
+    meeting_model = db.query(models.meeting) \
+            .filter(models.meeting.id == id) \
+            .first()
+
+    if meeting_model is None:
+        return Response(f'No Meeting_room found with this id : {id}', 'Meeting_room not updated', True)
+   
+
+  
+    if meetingput. No_of_seats != None:
+       meeting_model . No_of_seats =meetingput.No_of_seats
+    if meetingput.Is_Projector_or_TV_availability != None:
+       meeting_model .Is_Projector_or_TV_availability = meetingput.Is_Projector_or_TV_availability
+    if meetingput.Active != None:
+       meeting_model .Active = meetingput.Active
+
+    
+    db.add(meeting_model)
+    db.commit() 
+   
+    data = [{'user': meetingput.user,
+             'Conference_room_name': meetingput.Conference_room_name,
+             'No_of_seats':  meetingput.No_of_seats,
+             'Is_Projector_or_TV_availability': meetingput.Is_Projector_or_TV_availability,
+             'Location':  meetingput.Location,
+             'Active':  meetingput.Active}]
+  
+    return Response(data, 'Meeting_room updated successfully', False)
+
+
+@app.delete("/V1/Meeting")
+async def delete_Meeting_Room(id: str, db: Session = Depends(get_db),
+                         current_user: meeting = Depends(get_current_user)):
+    try:
+        data = meeting_model = db.query(models.meeting) \
+            .filter(models.meeting.id == id) \
+            .first()
+    except Exception as e:
+        print(e)
+    if meeting_model is None:
+        return Response(f'No meeting_room found with this id : {id}', 'meeting_room not deleted', True)
+
+    db.query(models.meeting) \
+        .filter(models.meeting.id == id) \
+        .delete()
+
+    db.commit()
+    return Response(data, f'meeting_room {id} deleted successfully', False)
+
+
+if __name__ == '__main__':
+    uvicorn.run("main:app", host='172.16.22.6', port=8003, reload = True)
+    print("running")
+
