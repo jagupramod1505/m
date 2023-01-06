@@ -1,0 +1,216 @@
+from enum import Enum
+from typing import Optional,Union
+import uvicorn
+from fastapi import FastAPI, Depends,HTTPException,status
+from pydantic import BaseModel, Field
+import models
+from database import engine, SessionLocal
+from sqlalchemy.orm import Session,load_only
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from responses import Response
+from fastapi.encoders import jsonable_encoder
+
+app = FastAPI()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+models.Base.metadata.create_all(bind=engine)
+
+
+def get_db():
+    try:
+        db = SessionLocal()
+        yield db
+    except Exception as e:
+        return Response(e, 'Response Failed', True)
+    finally:
+        db.close()
+
+
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Union[str, None] = None
+
+class login(BaseModel):
+    username :str
+    password:str
+
+class Status(str, Enum):
+    Active = 'Active'
+    Inactive = 'Inactive'
+    Maintenance = 'Maintenance'
+    Populate = 'Populate'
+
+class computepost(BaseModel):
+    huuid: str = Field(None, title="Host Id", max_length=20,example="shubhangi123")
+    user: str = Field(None, title="user", max_length=40,example="shubhangi")
+    url: str = Field(None, title="url", max_length=40,example="www.gmail.com")
+    password: str = Field(None, title="password", max_length=20,example="shubhangi123")
+    hypervisor: str = Field(None, title=" hypervisor", max_length=20,example="Xzen")
+    is_master: str = Field(None, title="is_master", max_length=20,example="1")
+
+
+class computeput(BaseModel):
+    user: Optional[str]= Field(None, title="user", max_length=40,example="shubhangi")
+    url: Optional[str] = Field(None, title="url", max_length=40,example="www.gmail.com")
+    password: Optional[str] = Field(None, title="password", max_length=20,example="shubhangi123")
+    status: Optional[Status]
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user: str = payload.get("sub")
+        if user is None:
+            raise credentials_exception
+        token_data = TokenData(username=user)
+    except JWTError:
+        raise credentials_exception
+    return user 
+
+@app.post('/login',tags=["Authentication"])
+def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(models.compute).filter(models.compute.user == request.username).first()
+    hashedpassword=pwd_context.hash(request.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Invalid user")
+    if not verify_password(request.password,hashedpassword):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Invalid password")
+
+    access_token = create_access_token(data={"sub": user.user})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+#@app.get("/v1/Compute",response_model=show_compute)
+#==========================================================================================================
+@app.get("/v1/Compute")
+async def List_all_Compute(current_user:computepost = Depends(get_current_user),db: Session = Depends(get_db)):
+    try:
+        data=db.query(models.compute).options(load_only(models.compute.user,models.compute.url,models.compute.hypervisor,models.compute.is_master,
+                                                        models.compute.memory_used,models.compute.memory_total,models.compute.cpu_used,
+                                                        models.compute.cpu_total,models.compute.uptime,models.compute.monthly_uptime,              
+                                                        models.compute.total_uptime,models.compute.num_sockets,models.compute.num_cpu_cores,
+                                                        models.compute.num_cpu_threads,models.compute.cpu_freq_MHz,models.compute.processor_model,
+                                                        models.compute.status,models.compute.created_on,models.compute.last_updated)).all()        
+
+        if data is not None:
+            return Response(data, 'Compute retrieved successfully', False)
+        return Response('Compute does not exist', 'Response Failed', True)
+
+    except Exception as e:
+        return Response(e, 'Response Failed', True)
+
+
+@app.post("/v1/Compute")
+async def Create_Compute(computepost: computepost,current_user:computepost = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        hashedpassword=pwd_context.hash(computepost.password)
+
+        compute_model = models.compute()
+        compute_model.huuid = computepost.huuid
+        compute_model.user = computepost.user
+        compute_model.url = computepost.url
+        compute_model.password = hashedpassword
+        compute_model.hypervisor = computepost.hypervisor
+        compute_model.is_master = computepost.is_master
+        db.add(compute_model)
+        db.commit()
+    except Exception as e:
+        return Response(e, 'Response Failed', True)
+    data = [{'huuid': computepost.huuid,
+            'user': computepost.user,
+            'url': computepost.url,
+            'hypervisor': computepost.hypervisor,
+            'is_master': computepost.is_master}]
+
+    return Response(data, 'compute added successfully', False)
+
+
+
+@app.put('/V1/Compute')
+async def Upadate_Compute(huuid: str, computeput: computeput, db: Session = Depends(get_db),current_user:computeput = Depends(get_current_user)):
+    try:
+        compute_model = db.query(models.compute) \
+            .filter(models.compute.huuid == huuid) \
+            .first()
+    except Exception as e:
+        return Response(e, 'Response Failed', True)
+
+    if compute_model is None:
+        return Response(f'No compute found with this id : {huuid}', 'compute not updated', True)
+
+    hashedpassword=pwd_context.hash(computeput.password)
+
+    if computeput.user != None:
+        compute_model.user = computeput.user
+    if computeput.url != None:
+        compute_model.url = computeput.url
+    if computeput.password != None:
+        compute_model.password = hashedpassword
+    if computeput.status != None:
+        compute_model.status = computeput.status
+
+    db.add(compute_model)
+    db.commit()
+    data = [{'user': computeput.user,
+             'url': computeput.url,
+             'status': computeput.status}]
+
+    return Response(data,'compute updated successfully', False)
+
+
+@app.delete("/V1/Compute")
+async def delete_Compute(huuid: str, db: Session = Depends(get_db),current_user:computepost = Depends(get_current_user)):
+    try:
+        data = compute_model = db.query(models.compute) \
+            .filter(models.compute.huuid == huuid) \
+            .first()
+    except Exception as e:
+        return Response(e, 'Response Failed', True)
+    if compute_model is None:
+        return Response(e, 'Response Failed', True)
+        #return Response(f'No compute found with this id : {huuid}', 'compute not deleted', True)
+
+    db.query(models.compute) \
+        .filter(models.compute.huuid == huuid) \
+        .delete()
+
+    db.commit()
+
+    data=db.query(models.compute).options(load_only(models.compute.user,models.compute.url,models.compute.hypervisor,models.compute.is_master)).all() 
+
+    return Response(e, 'Response Failed', True)
+    #return Response(data, f'compute {huuid} deleted successfully', False)
+
+if __name__ == '__main__':
+    uvicorn.run("main:app", host='172.16.22.6', port=8005, reload = True)
+    print("running")

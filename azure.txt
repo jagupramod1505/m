@@ -1,0 +1,322 @@
+__author__ = "Shubhangi Deore"
+__date__ = "12/12/2022"
+__lastupdatedby__ = "Shubhangi Deore"
+__lastupdateddate__ = "1/2/2023"
+
+# ============================IMPORT ETC ================================================================================
+
+from fastapi import FastAPI,HTTPException,status,Depends
+import uvicorn
+from function_aws import bucket_permission_match
+from responses import Response
+from pydantic import BaseModel
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from typing import Union
+import boto3
+
+app = FastAPI()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Union[str, None] = None
+
+class login(BaseModel): 
+    aws_access_key_id :str
+    aws_secret_access_key:str
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user: str = payload.get("sub")
+        if user is None:
+            raise credentials_exception
+        token_data = TokenData(username=user)
+    except JWTError:
+        raise credentials_exception
+    return user
+
+#==========================login==================================================================
+
+@app.post('/login',tags=["Authentication"])
+def login(request: OAuth2PasswordRequestForm = Depends()):
+    try:
+        global s3
+        s3 = boto3.client('s3',aws_access_key_id=request.username,aws_secret_access_key=request.password)
+        bucket=s3.list_buckets()
+    except Exception as e:
+        data=('{m}'.format(m = str(e)))
+        return Response(data, 'invalid credentials', True)
+    
+    access_token = create_access_token(data={"sub": bucket["Buckets"][0]["Name"]})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+#==========================function for list of buckets==================================================================
+
+@app.get("/v1/bucket_list")
+def list_buckets(current_user:login = Depends(get_current_user)):
+    try:   
+        bucket=s3.list_buckets()
+        bucket_list=[]
+        for item in bucket ["Buckets"]:
+            bucket_list.append(item["Name"])
+        data=bucket_list
+        
+        return Response(data, 'Bucket retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'The specified bucket does not exist', True)
+
+#==========================function for list of Object==================================================================
+@app.get("/v1/object_List")
+
+def List_of_Object(Bucketname: str,current_user:login = Depends(get_current_user)):
+    try:
+        object = s3.list_objects(Bucket=Bucketname)
+        objectname = []
+        for item in object['Contents']:
+            objectname.append(item['Key'])
+        data = (objectname)
+        if data is not None:
+            return Response(data, 'Object retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'The specified does not exist', True)
+#==========================function for list permission of bucket=======================================================
+
+@app.get("/v1/bucket_permission")
+def list_bucket_permission(bucketname : str,current_user:login = Depends(get_current_user)):
+    try:
+        bucket = s3.get_bucket_acl(Bucket=bucketname)
+        
+        bucket_permission=[]
+        for item in bucket ["Grants"]:
+            existing_permission=(item["Permission"])
+            bucket_permission.append(existing_permission)
+        bucket_permission=set(bucket_permission)
+        data=list(bucket_permission)
+        return Response(data, 'Permission retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'The specified bucket does not exist', True)
+     
+#======================function for comparing permissions of bucket====================================================
+
+@app.get("/v1/compare_bucket_permission")
+def compare_bucket_permission(bucketname : str, bucket_permission : str,input_choise:int =0,current_user:login = Depends(get_current_user)):
+    try:
+        bucket = s3.get_bucket_acl(Bucket=bucketname)
+        
+        bucketpermission=[]
+        for item in bucket ["Grants"]:
+            existing_permission=(item["Permission"])
+            bucketpermission.append(existing_permission)
+        bucketpermission=set(bucketpermission)
+        eplist=list(bucketpermission)
+
+        bucket_permission = bucket_permission.split(",")
+        iplen=(len(bucket_permission))
+    
+        match_list=[]
+        
+        if input_choise:
+            eplist = [x.upper() for x in eplist]
+            bucket_permission= [x.upper() for x in bucket_permission]
+            flag=bucket_permission_match(eplist,bucket_permission,match_list)
+        else:
+            flag=bucket_permission_match(eplist,bucket_permission,match_list)
+
+        unmatch_list = []
+        for element in bucket_permission:
+            if element not in match_list:
+                unmatch_list.append(element)
+
+        if flag ==iplen:
+            return Response("all Permission match successfully",'Permission matched', False)
+        if flag ==0:
+            return Response(f'Permission match:{match_list} ,Permission not match:{unmatch_list}',"Permission not matched" , True)
+        return Response(f'Permission match:{match_list} ,Permission not match:{unmatch_list}', "Permission matched partially", True)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+            
+    
+if __name__ == '__main__':
+    uvicorn.run("fastapi_aws:app", host='172.16.22.6', port=8008, reload = True,debug =True)
+    print("running")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''__author__ = "Shubhangi Deore"
+__date__ = "12/12/2022"
+__lastupdatedby__ = "Shubhangi Deore"
+__lastupdateddate__ = "26/12/2022"
+
+# ============================IMPORT ETC ================================================================================
+
+from fastapi import FastAPI
+import uvicorn
+from function_aws import aws_connection,bucket_permission_match
+from responses import Response
+
+app = FastAPI()
+
+#==========================function for list of buckets==================================================================
+
+@app.get("/v1/bucket_list")
+def list_buckets():
+    try:
+    
+        s3=aws_connection()
+        bucket=s3.list_buckets()
+        bucket_list=[]
+        for item in bucket ["Buckets"]:
+            bucket_list.append(item["Name"])
+        data=bucket_list
+        return Response(data, 'Bucket retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+
+#==========================function for list of Object==================================================================
+@app.get("/v1/object_List")
+
+def List_of_Object(Bucketname: str):
+
+    try:
+        s3=aws_connection()
+        object = s3.list_objects(Bucket=Bucketname)
+        objectname = []
+        for item in object['Contents']:
+            objectname.append(item['Key'])
+        data = (objectname)
+        if data is not None:
+            return Response(data, 'Object retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'The specified bucket does not exist', True)
+#==========================function for list permission of bucket=======================================================
+
+@app.get("/v1/bucket_permission")
+def list_bucket_permission(bucketname : str):
+    try:     
+        s3 = aws_connection()
+        bucket = s3.get_bucket_acl(Bucket=bucketname)
+        
+        bucket_permission=[]
+        for item in bucket ["Grants"]:
+            existing_permission=(item["Permission"])
+            bucket_permission.append(existing_permission)
+        bucket_permission=set(bucket_permission)
+        data=list(bucket_permission)
+        return Response(data, 'Permission retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'The specified bucket does not exist', True)
+     
+#======================function for comparing permissions of bucket====================================================
+
+@app.get("/v1/compare_bucket_permission")
+def compare_bucket_permission(bucketname : str, bucket_permission : str,input_choise:int =0):
+    try:
+
+        s3 = aws_connection()
+        bucket = s3.get_bucket_acl(Bucket=bucketname)
+        
+        bucketpermission=[]
+        for item in bucket ["Grants"]:
+            existing_permission=(item["Permission"])
+            bucketpermission.append(existing_permission)
+        bucketpermission=set(bucketpermission)
+        eplist=list(bucketpermission)
+
+        bucket_permission = bucket_permission.split(",")
+        iplen=(len(bucket_permission))
+    
+        
+        match_list=[]
+        
+        if input_choise:
+            eplist = [x.upper() for x in eplist]
+            bucket_permission= [x.upper() for x in bucket_permission]
+            flag=bucket_permission_match(eplist,bucket_permission,match_list)
+        else:
+            flag=bucket_permission_match(eplist,bucket_permission,match_list)
+
+        unmatch_list = []
+        for element in bucket_permission:
+            if element not in match_list:
+                unmatch_list.append(element)
+
+        if flag ==iplen:
+            return Response("all Permission match successfully",'Permission matched', False)
+        if flag ==0:
+            return Response(f'Permission match:{match_list} ,Permission not match:{unmatch_list}',"Permission not matched" , True)
+        return Response(f'Permission match:{match_list} ,Permission not match:{unmatch_list}', "Permission matched partially", True)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+            
+    
+if __name__ == '__main__':
+    uvicorn.run("fastapi_aws:app", host='172.16.22.6', port=8008, reload = True,debug =True)
+    print("running")'''
+
+
+__author__ = "Shubhangi Deore"
+__date__ = "12/12/2022"
+__lastupdatedby__ = "Shubhangi Deore"
+__lastupdateddate__ = "19/12/2022"
+
+from responses import Response
+#aws_access_key_id="AKIAWHNVGJDZF6YLZKVG"
+#aws_secret_access_key="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"
+#aws_access_key_id='AKIARGGCD4XW5IQUWCUP'
+#aws_secret_access_key='Dj96kfBNfRFn/TUWEHt6WRNnv0QZUumB4m8GjY/WW')
+
+
+        
+
+#======================= function for permission match ==========================================================================================================
+def bucket_permission_match(eplist,bucket_permission,match_list):
+    try:
+        flag=0
+        for item in eplist:
+            for index in bucket_permission:
+                if item == index:
+                    match_list.append(index)
+                    flag=flag+1
+        return flag
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
