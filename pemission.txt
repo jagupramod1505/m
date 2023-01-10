@@ -1,0 +1,211 @@
+
+'''
+__Author__ = "Jagruti Patil"
+__date__ = "9 Jan 2023"
+__lastupdatedby__ = "Jagruti Patil"
+__lastupdateddate__ = " "9 Jan 2023"
+'''
+
+from fastapi import FastAPI
+import uvicorn
+from azure.storage.blob import ContainerClient
+app = FastAPI()
+from responses import Response
+
+@app.get("/v1/Blob_List")
+def List_of_Blob():
+    try:
+        container = ContainerClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=scalaracount;AccountKey=vXdFtfFWdYiypod9vB8I3LfrkrjAFrgZGvgrR2Xt/18Jq9Oi9F0CNKSLLeJ1jpu5+Ek41q3dOZYv+AStsqsACw==;BlobEndpoint=https://scalaracount.blob.core.windows.net/;FileEndpoint=https://scalaracount.file.core.windows.net/;QueueEndpoint=https://scalaracount.queue.core.windows.net/;TableEndpoint=https://scalaracount.table.core.windows.net/", container_name="container1")
+        bloblist = container.listblobs()
+        all_blob=[]
+        for blob in bloblist:
+            all_blob.append(blob.name)
+        return(all_blob)
+    except Exception as e:
+        print(e)
+@app.get("/v1/Container_List")
+def list_container():
+    try:
+        container = ContainerClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=scalaracount;AccountKey=vXdFtfFWdYiypod9vB8I3LfrkrjAFrgZGvgrR2Xt/18Jq9Oi9F0CNKSLLeJ1jpu5+Ek41q3dOZYv+AStsqsACw==;BlobEndpoint=https://scalaracount.blob.core.windows.net/;FileEndpoint=https://scalaracount.file.core.windows.net/;QueueEndpoint=https://scalaracount.queue.core.windows.net/;TableEndpoint=https://scalaracount.table.core.windows.net/")
+        bucket_names = []
+        for bucket in s3.buckets.all():
+                        #return(bucket.name)
+              bucket_names.append(bucket.name)
+        data=(bucket_names)
+        if data is not None:
+            return Response(data, 'bucket retrieved successfully', False)
+        return Response('bucket does not exist', 'Response Failed', True)
+
+    except Exception as e:
+        print(e)
+
+
+
+
+if __name__ == '__main__':
+    uvicorn.run("main:app", host='172.16.22.6', port=8001, reload = True,debug =True)
+    print("running")
+
+ from azure.storage.blob.baseblobservice import BaseBlobService 
+>>> blob_service = BaseBlobService(account_name='x', account_key='x')
+>>> containers = blob_service.list_containers() 
+>>> for c in containers: 
+      print(c.name)
+
+
+from azure.storage.blob import BlobServiceClient
+connection_string=''
+blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+container_client = blob_service_client.get_container_client("<container name>")
+blob_client = container_client.get_blob_client("<blob name>")
+blob_client.download_blob().readall() # read blob content as string
+
+*****************
+#from azure.storage.fileshare import ShareFileClient
+from azure.storage.fileshare import ShareDirectoryClient
+
+connection_string="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/"
+# parent_dir = ShareDirectoryClient.from_connection_string(conn_str=connection_string,share_name='hrdocs',directory_path='my_file')
+
+# #print(dir(parent_dir))
+
+# # a=list(parent_dir.get_file_client(file_name="abc.txt"))
+# # print(a)
+
+
+parent_dir = ShareDirectoryClient.from_connection_string(conn_str=connection_string,share_name='hrdocs', directory_path='my_file')
+data=[]
+print(parent_dir)
+abc=(parent_dir.list_directories_and_files())
+print(abc)
+my_list = list(parent_dir.list_directories_and_files())
+print(my_list)
+for item in (my_list):
+    data.append(item["name"])
+    
+print (data)
+
+
+
+
+
+
+
+
+# from azure.storage.blob import AccessPolicy, BlobServiceClient, ContainerSasPermissions, PublicAccess
+
+
+# from azure.storage.fileshare import ShareDirectoryClient
+
+
+# connection_string="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/"
+# '''
+# service_client = BlobServiceClient.from_connection_string(connection_string)
+# container_client = service_client.get_container_client("storagecontainerone")
+
+# # Get the access policy on the container
+# print("\n..Getting container access policy")
+# access_policy = container_client.get_container_access_policy()
+# print(f"Blob Access Type: {access_policy['public_access']}")
+# for identifier in access_policy['signed_identifiers']:
+#     print(f"Identifier '{identifier.id}' has permissions '{identifier.access_policy.permission}''")'''
+
+# service_client = ShareDirectoryClient.from_connection_string(connection_string,share_name="hrdocs", directory_path="my_file")
+
+# abc=service_client.list_directories_and_files()
+# print(dir(abc))
+
+# #print(dir(service_client))
+***************************************
+
+'''
+__Author__ = "Jagruti Patil"
+__date__ = "9 Jan 2023"
+__lastupdatedby__ = "Jagruti Patil"
+__lastupdateddate__ = " "9 Jan 2023"
+'''
+
+from fastapi import FastAPI
+from azure.storage.blob import BlockBlobService
+import uvicorn
+from responses import Response
+app = FastAPI()
+
+@app.get("/v1/Container_list")
+def List_of_Container():
+    try:
+        blob_service = BlockBlobService(account_name='scalaracount', account_key='vXdFtfFWdYiypod9vB8I3LfrkrjAFrgZGvgrR2Xt/18Jq9Oi9F0CNKSLLeJ1jpu5+Ek41q3dOZYv+AStsqsACw==')
+        containers =  blob_service.list_containers()
+        container_names = []
+        for container in containers: 
+             container_names.append(container.name)
+        data=(container_names)
+        if data is not None:
+            return Response(data, 'container retrieved successfully', False)
+        return Response('container does not exist', 'Response Failed', True)
+    except Exception as e:
+        print(e)
+@app.get("/v1/File_List")
+def List_of_File(container_name: str):
+    try:
+        blob_service = BlockBlobService(account_name='scalaracount', account_key='vXdFtfFWdYiypod9vB8I3LfrkrjAFrgZGvgrR2Xt/18Jq9Oi9F0CNKSLLeJ1jpu5+Ek41q3dOZYv+AStsqsACw==')
+        blob_list = blob_service.list_blobs(container_name)
+        all_blob=[]
+        for blob in blob_list:
+            all_blob.append(blob.name)
+        data = (all_blob)
+        if data is not None:
+         return Response(data, 'List retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+
+
+@app.get("/v1/ContainerFile_Permission")
+def File_List_Permission (blobname : str ):
+
+    try:
+        blob_service_client = BlockBlobService("DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=scalaracount;AccountKey=vXdFtfFWdYiypod9vB8I3LfrkrjAFrgZGvgrR2Xt/18Jq9Oi9F0CNKSLLeJ1jpu5+Ek41q3dOZYv+AStsqsACw==;BlobEndpoint=https://scalaracount.blob.core.windows.net/;FileEndpoint=https://scalaracount.file.core.windows.net/;QueueEndpoint=https://scalaracount.queue.core.windows.net/;TableEndpoint=https://scalaracount.table.core.windows.net/")
+        data =  blob_service_client.get_blob_acl(Blob=blobname)
+        return Response(data, 'Permission retrieved successfully', False)      
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+if __name__ == '__main__':
+    uvicorn.run("main:app", host='172.16.22.6', port=8001, reload = True,debug =True)
+    print("running")
+
+
+*****************************************
+BlockBlobService
+pip3.9 install azure-storage-blob==2.1.0
+
+
+BlobServiceClient
+pip3.9 install azure-storage-blob ==12.3.0
+
+ContainerClient
+pip3.9 install azure-storage-blob==12.8.1
+from azure.storage.blob import AccessPolicy, BlobServiceClient, ContainerSasPermissions, PublicAccess
+
+
+from azure.storage.fileshare import ShareDirectoryClient
+
+
+connection_string="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/"
+'''
+service_client = BlobServiceClient.from_connection_string(connection_string)
+container_client = service_client.get_container_client("storagecontainerone")
+
+# Get the access policy on the container
+print("\n..Getting container access policy")
+access_policy = container_client.get_container_access_policy()
+print(f"Blob Access Type: {access_policy['public_access']}")
+for identifier in access_policy['signed_identifiers']:
+    print(f"Identifier '{identifier.id}' has permissions '{identifier.access_policy.permission}''")'''
+
+service_client = ShareDirectoryClient.from_connection_string(connection_string,share_name="hrdocs", directory_path="my_file")
+
+abc=service_client.list_directories_and_files()
+print(abc)
+
+#print(dir(service_client))
+**************************************
