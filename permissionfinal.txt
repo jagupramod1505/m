@@ -1,0 +1,367 @@
+__author__ = "Shubhangi Deore"
+__date__ = "12/12/2022"
+__lastupdatedby__ = "Shubhangi Deore"
+__lastupdateddate__ = "1/2/2023"
+
+# ============================IMPORT ETC ===============================================================================
+from fastapi import FastAPI
+from azure.storage.fileshare import ShareServiceClient
+import uvicorn
+from responses import Response
+from azure.storage.blob import ContainerClient,BlobServiceClient
+
+app = FastAPI()
+
+global connection_string
+connection_string="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/"
+
+@app.get("/v1/blob_list")
+def List_of_blob(container_name:str):
+    try:
+        #container_name="storagecontainerone"
+        container = ContainerClient.from_connection_string(conn_str=connection_string,container_name=container_name)
+    
+        blob_list = container.list_blobs()
+        if blob_list != None:
+            data=[]
+            for blob in blob_list:
+                data.append(blob.name)
+            return Response(data, 'Blob retrieved successfully', False)
+        return Response(data, 'Blob not retrieved successfully', False)
+        
+    except Exception as e:
+        return Response(e, 'The specified blob does not exist', True)
+        
+
+
+@app.get("/v1/list_file_share")
+def list_file_share():
+    try:
+        service_client = ShareServiceClient.from_connection_string(conn_str=connection_string)
+        data=[]
+        my_list = list(service_client.list_shares())
+        for item in (my_list):
+            data.append(item["name"])
+        return Response(data, 'file share retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+
+
+@app.get("/v1/container_permission")
+def container_permission(container_name:str):
+    try:
+        #storagecontainerone
+        #container2
+        #container = ContainerClient.from_connection_string(conn_str=connection_string,container_name=container_name)
+        #container_access_policy = container.get_container_access_policy()
+
+        service_client = BlobServiceClient.from_connection_string(connection_string)
+        container_client = service_client.get_container_client(container_name)
+        access_policy = container_client.get_container_access_policy()
+        permission_list=[]
+        for identifier in access_policy['signed_identifiers']:
+            permission_list.append(identifier.access_policy.permission)
+        identifireid_list=[]
+        for identifier in access_policy['signed_identifiers']:
+            identifireid_list.append(identifier.id)
+        data = dict(zip(identifireid_list, permission_list))
+        return Response(data, 'container permission retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+
+@app.get("/v1/file_share_permission")
+def file_share_permission(file_share_name:str):
+    try:
+        #share="hrdocs"
+
+        service_client = ShareServiceClient.from_connection_string(conn_str=connection_string)
+        share_client=service_client.get_share_client(file_share_name)
+        access_policy=share_client.get_share_access_policy()
+        permission_list=[]
+        for identifier in access_policy['signed_identifiers']:
+            permission_list.append(identifier.access_policy.permission)
+
+        identifireid_list=[]
+        for identifier in access_policy['signed_identifiers']:
+            identifireid_list.append(identifier.id)
+
+        data = dict(zip(identifireid_list, permission_list))
+        return Response(data, 'file share permission retrieved successfully', False)
+    except Exception as e:
+        return Response(e, 'Opration Failed', True)
+
+
+#list container-acct=DataLakeServiceClient.from_connection_string("DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/")
+# print(dir(acct))
+# b=list(acct.list_file_systems())
+# print(b)
+
+
+
+    #return(f"Identifier '{identifireid_list}' has permissions '{permission_list}'")
+
+    # print("\n..Creating container")
+    # container_client.create_container()
+
+    # # Create access policy
+    # access_policy = AccessPolicy(permission=ContainerSasPermissions(read=True, write=True),
+    #                                 expiry=datetime.utcnow() + timedelta(hours=1),
+    #                                 start=datetime.utcnow() - timedelta(minutes=1))
+
+    # identifiers = {'read': access_policy}
+
+    # # Specifies full public read access for container and blob data.
+    # public_access = PublicAccess.Container
+
+    # # Set the access policy on the container
+    # container_client.set_container_access_policy(signed_identifiers=identifiers, public_access=public_access)
+
+    # for identifier_name, access_policy in identifiers.items():
+    #     print(
+    #         "Created container has identifier '{}' with permissions '{}', start date '{}', and expiry date '{}'.".format(
+    #             identifier_name, access_policy.permission, access_policy.start, access_policy.expiry
+    #         )
+    #     )
+
+    # Get the access policy on the container
+    # print("\n..Getting container access policy")
+    # access_policy = container_client.get_container_access_policy()
+    # print(f"Blob Access Type: {access_policy['public_access']}")
+    # for identifier in access_policy['signed_identifiers']:
+    #     print(f"Identifier '{identifier.id}' has permissions '{identifier.access_policy.permission}''")
+
+
+# @app.get("/v1/file_list")
+# def List_of_file():
+#     parent_dir = ShareDirectoryClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/",
+#                                                              share_name="hrdocs", directory_path="parent_dir")
+
+#     my_files = []
+#     for item in parent_dir.list_directories_and_files():
+#         my_files.append(item)
+#     return(my_files)
+#     # # def ls_files(self, path, recursive=False):
+#     # #  '''
+#     # # List files under a path, optionally recursively
+#     # # '''
+#     if not path == '' and not path.endswith('/'):
+#       path += '/'
+
+#     blob_iter = self.client.list_blobs(name_starts_with=path)
+#     files = []
+#     for blob in blob_iter:
+#       relative_path = os.path.relpath(blob.name, path)
+#       if recursive or not '/' in relative_path:
+#         files.append(relative_path)
+#     return files
+
+
+
+# @app.get("/v1/create_file_share")
+# def create_file_share():
+
+#     share = ShareClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/", 
+#                                                 share_name="pqr")
+#     share.create_share()
+#     #obj.List_directory()
+
+
+
+# @app.get("/v1/upload_file_share")
+# def upload_file_share():
+#     file_client = ShareFileClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/",
+#                     share_name="hrdocs", file_path="my_aaa")
+
+#     with open("./SampleSource.txt", "rb") as source_file:
+#         file_client.upload_file(source_file)
+
+# @app.get("/v1/upload_file_share")
+# def upload_file_share():
+#     file_client = ShareFileClient.from_connection_string(conn_str="DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=san002;AccountKey=sEoPtESCvyJAaLBPY3JcGHR/3L3mqWrzFYXK6K3s2+UQ0jR3VhINOmTMmw7iyt4IDm4JTxAm6tGl+AStdb3krA==;BlobEndpoint=https://san002.blob.core.windows.net/;FileEndpoint=https://san002.file.core.windows.net/;QueueEndpoint=https://san002.queue.core.windows.net/;TableEndpoint=https://san002.table.core.windows.net/",
+#                     share_name="hrdocs")
+
+#     print(dir(file_client))
+
+    #file_client.List_directory()
+
+
+
+
+
+# # coding: utf-8
+
+# # -------------------------------------------------------------------------
+# # Copyright (c) Microsoft Corporation. All rights reserved.
+# # Licensed under the MIT License. See License.txt in the project root for
+# # license information.
+# # --------------------------------------------------------------------------
+
+# """
+# FILE: blob_samples_service.py
+# DESCRIPTION:
+#     This sample demos basic operations of the blob service client.
+# USAGE: python blob_samples_service.py
+#     Set the environment variables with your own values before running the sample:
+#     1) AZURE_STORAGE_CONNECTION_STRING - the connection string to your storage account
+# """
+# import os
+# import uvicorn
+# from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+# from fastapi import FastAPI,HTTPException,status,Depends
+# import uvicorn
+# from function_aws import bucket_permission_match
+# from responses import Response
+# from pydantic import BaseModel
+# from passlib.context import CryptContext
+# from datetime import datetime, timedelta
+# from jose import JWTError, jwt
+# from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+# from typing import Union
+# import boto3
+
+# connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+# def get_storage_account_information(self):
+
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import BlobServiceClient
+#         blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+
+#         # [START get_blob_service_account_info]
+#         account_info = blob_service_client.get_account_information()
+#         print('Using Storage SKU: {}'.format(account_info['sku_name']))
+#         # [END get_blob_service_account_info]
+
+# def blob_service_properties(self):
+
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import BlobServiceClient
+#         blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+
+#         # [START set_blob_service_properties]
+#         # Create service properties
+#         from azure.storage.blob import BlobAnalyticsLogging, Metrics, CorsRule, RetentionPolicy
+
+#         # Create logging settings
+#         logging = BlobAnalyticsLogging(read=True, write=True, delete=True, retention_policy=RetentionPolicy(enabled=True, days=5))
+
+#         # Create metrics for requests statistics
+#         hour_metrics = Metrics(enabled=True, include_apis=True, retention_policy=RetentionPolicy(enabled=True, days=5))
+#         minute_metrics = Metrics(enabled=True, include_apis=True,
+#                                  retention_policy=RetentionPolicy(enabled=True, days=5))
+
+#         # Create CORS rules
+#         cors_rule = CorsRule(['www.xyz.com'], ['GET'])
+#         cors = [cors_rule]
+
+#         # Set the service properties
+#         blob_service_client.set_service_properties(logging, hour_metrics, minute_metrics, cors)
+#         # [END set_blob_service_properties]
+
+#         # [START get_blob_service_properties]
+#         properties = blob_service_client.get_service_properties()
+#         # [END get_blob_service_properties]
+
+# def blob_service_stats(self):
+
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import BlobServiceClient
+#         blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+
+#         # [START get_blob_service_stats]
+#         stats = blob_service_client.get_service_stats()
+#         # [END get_blob_service_stats]
+
+# def container_operations(self):
+
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import BlobServiceClient
+#         blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+
+#         try:
+#             # [START bsc_create_container]
+#             try:
+#                 new_container = blob_service_client.create_container("containerfromblobservice")
+#                 properties = new_container.get_container_properties()
+#             except ResourceExistsError:
+#                 print("Container already exists.")
+#             # [END bsc_create_container]
+
+#             # [START bsc_list_containers]
+#             # List all containers
+#             all_containers = blob_service_client.list_containers(include_metadata=True)
+#             for container in all_containers:
+#                 print(container['name'], container['metadata'])
+
+#             # Filter results with name prefix
+#             test_containers = blob_service_client.list_containers(name_starts_with='test-')
+#             for container in test_containers:
+#                 print(container['name'], container['metadata'])
+#             # [END bsc_list_containers]
+
+#         finally:
+#             # [START bsc_delete_container]
+#             # Delete container if it exists
+#             try:
+#                 blob_service_client.delete_container("containerfromblobservice")
+#             except ResourceNotFoundError:
+#                 print("Container already deleted.")
+#             # [END bsc_delete_container]
+
+# def get_blob_and_container_clients(self):
+
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import BlobServiceClient
+#         blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+
+#         # [START bsc_get_container_client]
+#         # Get a client to interact with a specific container - though it may not yet exist
+#         container_client = blob_service_client.get_container_client("containertest")
+#         try:
+#             for blob in container_client.list_blobs():
+#                 print("Found blob: ", blob.name)
+#         except ResourceNotFoundError:
+#             print("Container not found.")
+#         # [END bsc_get_container_client]
+#         try:
+#             # Create new Container in the service
+#             container_client.create_container()
+
+#             # [START bsc_get_blob_client]
+#             blob_client = blob_service_client.get_blob_client(container="containertest", blob="my_blob")
+#             try:
+#                 stream = blob_client.download_blob()
+#             except ResourceNotFoundError:
+#                 print("No blob found.")
+#             # [END bsc_get_blob_client]
+
+#         finally:
+#             # Delete the container
+#             blob_service_client.delete_container("containertest")
+
+# def get_blob_service_client_from_container_client(self):
+#         # Instantiate a BlobServiceClient using a connection string
+#         from azure.storage.blob import ContainerClient
+#         container_client1 = ContainerClient.from_connection_string(self.connection_string, "container")
+#         container_client1.create_container()
+
+#         # [START get_blob_service_client_from_container_client]
+#         blob_service_client = container_client1._get_blob_service_client()
+#         print(blob_service_client.get_service_properties())
+#         container_client2 = blob_service_client.get_container_client("container")
+
+#         print(container_client2.get_container_properties())
+#         container_client2.delete_container()
+#         # [END get_blob_service_client_from_container_client]
+
+if __name__ == '__main__':
+    uvicorn.run("fastapi_azure:app", host='172.16.22.6', port=8005, reload = True,debug =True)
+    print("running")
+
+
+# {
+#     'public_access': None, 
+#     'signed_identifiers': 
+#             [<azure.storage.fileshare._generated.models._models_py3.SignedIdentifier object at 0x7f8c661080a0>]
+            
+# }
